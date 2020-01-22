@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title>一个可以开门的机柜</title>
+    <style>
+        *{
+            margin:0;
+            padding:0;
+            text-decoration: none;
+            box-sizing: border-box;
+        }
+        ul,li{
+            list-style: none;
+            border:none;
+        }
+        .clear:after{
+            content:"";
+            display:block;
+            clear:both;
+        }
+        body{
+            overflow: hidden;
+        }
+    </style>
+<!--    <script src="js/jquery-3.2.1.min.js"></script>-->
+    <!-- 引入3D库-->
+    <script src="js/three.js"></script>
+    <!-- 引入控制器-->
+    <script src="js/OrbitControls_alter.js"></script>
+    <!-- 引入动画库-->
+    <script src="js/tween.min.js"></script>
+</head>
+<body>
+
+<script>
+    //添加场景
+    var scene = new THREE.Scene();
+    //添加坐标轴
+    scene.add(axes = new THREE.AxisHelper(100));
+
+    //配置相机
+    var camera;
+    function initCamera(){
+        camera = new THREE.PerspectiveCamera(45,window.innerWidth/window.innerHeight,0.1,2000);
+        camera.position.set(0,150,300);
+//        camera.lookAt({
+//            x : 0,
+//            y : 1000,
+//            z : 0
+//        });
+
+    }
+    initCamera();
+
+    //配置光源
+    var dircLight;
+    function initLight(){
+        dircLight = new THREE.DirectionalLight(0xffffff);
+        dircLight.position.set(300,400,200);
+        scene.add(dircLight);
+        scene.add(new THREE.AmbientLight(0x444444));
+    }
+    initLight();
+
+    //设置渲染器
+    var renderer;
+    function initRenderer(){
+        renderer = new THREE.WebGLRenderer({
+            antialias:true//抗锯齿:true
+        });
+        renderer.setSize(window.innerWidth,window.innerHeight);//画布尺寸
+        renderer.setClearColor('#39609B');//背景色
+        document.body.appendChild(renderer.domElement);
+    }
+    initRenderer();
+
+    //设置贴图
+    var floorTexture;//地板贴图
+    function initTexture(){
+        floorTexture = THREE.ImageUtils.loadTexture('img/floor.jpg', render);
+        floorTexture.wrapS = floorTexture.wrapT = THREE.RepeatWrapping;//两个方向都重复
+        floorTexture.repeat.set(14,10);//两个方向上的重复数
+    }
+    initTexture();
+
+    //floor
+    var floor;
+    function initFloor(){
+        var geometry = new THREE.BoxGeometry(400,2,300);
+        var material = new THREE.MeshLambertMaterial({
+            color:0xffffff,
+            map:floorTexture
+        });
+        floor = new THREE.Mesh(geometry,material);
+        floor.position.set(0,-1,0);
+        scene.add(floor);
+    }
+    initFloor();
+
+    //画机柜上的编号贴图
+    function canvasTxture(str){
+        var canvas = document.createElement("canvas");
+        canvas.width = 50;
+        canvas.height = 40;
+        var ctx = canvas.getContext("2d");
+        var g = ctx.createLinearGradient(0,0,50,40);
+        g.addColorStop(0,"#777");
+        g.addColorStop(1,"#777");
+        ctx.fillStyle = g;
+        ctx.fillRect(0,0,50,40);
+        ctx.textBaseline='top';
+        ctx.font="20px SimHei";
+        ctx.fillStyle = "#00ffff";//编号颜色
+        var txtWidth = ctx.measureText(str).width;
+        ctx.fillText(str ,50/2-txtWidth/2,40/2-20/2);
+        var texture = new THREE.Texture(canvas);
+        texture.needsUpdate = true;
+        return texture;
+    }
+
+    //机柜
+    //构造机柜:参数x坐标,z坐标,机柜号
+    function Cabient(x,z,cabNmb){
+        this.x=x;
+        this.z=z;
+        this.y=0;
+        this.number = cabNmb;
+
+        var dk = 30;//底宽
+        var dc = 40;//底长
+
+        //设置机箱的外壳
+
+        var texture1 = THREE.ImageUtils.loadTexture('img/rack_panel.jpg', {}, render);//机箱外表贴图
+        var texture3 = THREE.ImageUtils.loadTexture('img/cabz.jpg', {}, render);//cabz
+        var texture2 = THREE.ImageUtils.loadTexture('img/caby.jpg', {}, render);//caby
+
+
+        var cabGroup = new THREE.Group();
+        //cabGroup的平面中心是机柜主体的平面中心
+        cabGroup.position.set(this.x,this.y,this.z);
+        cabGroup.name = 'cabGroup';
+
+
+        var cabMatLambert = new THREE.MeshLambertMaterial({//设置朗伯材质和贴图
+            color:0x8E8E8E,
+            map:texture1
+        });
+        var cabMatBasic = new THREE.MeshBasicMaterial({//设置基础材质和贴图
+            color:0x8E8E8E,
+            map:texture1
+        });
+
+        var cabdGeo = new THREE.BoxGeometry(dk,2,dc);//箱主体底宽30，高2，长40
+        var cabd = new THREE.Mesh(cabdGeo,cabMatBasic);
+        cabd.position.set(0,1,0);
+
+        var cabzGeo = new THREE.BoxGeometry(2,88,dc);//箱左侧，厚2，高88，长40
+        var cabzMaterials = [];
+        cabzMaterials.push(//push顺序：X轴正、反，Y轴正、反，Z轴正、反
+            cabMatLambert,
+            cabMatLambert,
+            cabMatLambert,
+            cabMatLambert,
+            new THREE.MeshBasicMaterial({
+                color:0xBEBEBE,
+                map:texture2
+            }),
+            cabMatBasic
+        );
+        var cabzMat = new THREE.MeshFaceMaterial(cabzMaterials);
+        var cabz = new THREE.Mesh(cabzGeo,cabzMat);
+        cabz.position.set(dk/2-1,46,0);
+
+        var cabyGeo = new THREE.BoxGeometry(2,88,dc);//箱左侧，厚2，高88，长40
+        var cabyMaterials = [];
+        cabyMaterials.push(
+            cabMatLambert,
+            cabMatBasic,
+            cabMatLambert,
+            cabMatLambert,
+            new THREE.MeshBasicMaterial({
+                color:0xBEBEBE,
+                map:texture3
+            }),
+            cabMatBasic
+        );
+        var cabyMat = new THREE.MeshFaceMaterial(cabyMaterials);
+        var caby = new THREE.Mesh(cabyGeo,cabyMat);
+        caby.position.set(-dk/2+1,46,0);
+
+        var cabhGeo = new THREE.BoxGeometry(dk-4,88,2);//后板宽26，高88，厚2
+        var cabh = new THREE.Mesh(cabhGeo,cabMatBasic);
+        cabh.position.set(0,46,0-dc/2+1);
+
+        var cabsGeo = new THREE.BoxGeometry(dk,2,dc);
+        var cabsMaterials = [];
+        cabsMaterials.push(
+            cabMatBasic,
+            cabMatBasic,
+            new THREE.MeshLambertMaterial({
+                color:0x8E8E8E,
+                map:canvasTxture(this.number)//canvas贴图
+            }),
+            cabMatLambert,
+            cabMatLambert,
+            cabMatLambert
+        );
+        var cabsMat = new THREE.MeshFaceMaterial(cabsMaterials);
+        var cabs = new THREE.Mesh(cabsGeo,cabsMat);
+        cabs.position.set(0,91,0);
+        cabs.name = 'cabs';
+
+        cabGroup.add(cabd,cabz,caby,cabh,cabs);//cabGroup不包括机箱门
+
+        //设置机箱门
+        var menGroup = new THREE.Group();
+        menGroup.position.set(this.x+15,this.y,this.z+20);
+        menGroup.name = this.number;//机箱门的名字为输入的编号
+
+        var menGeo = new THREE.BoxGeometry(dk,92,1);//机箱们宽，高，厚
+        var mMaterials = [];
+        mMaterials.push(
+            new THREE.MeshLambertMaterial({color:0x999999}),
+            new THREE.MeshLambertMaterial({color:0x999999}),
+            new THREE.MeshLambertMaterial({color:0x999999}),
+            new THREE.MeshLambertMaterial({color:0x999999}),
+            new THREE.MeshLambertMaterial({
+                map:THREE.ImageUtils.loadTexture(
+                    'img/rack_front_door.jpg',
+                    {},
+                    render
+                ),
+                overdraw:true
+            }),
+            new THREE.MeshBasicMaterial({
+                map:THREE.ImageUtils.loadTexture(
+                    'img/rack_door_back.jpg',
+                    {},
+                    render
+                ),
+                overdraw:true
+            })
+        );
+
+        var menMat = new THREE.MeshFaceMaterial(mMaterials);
+        var men = new THREE.Mesh(menGeo,menMat);
+        men.name='men';
+        men.position.set(-dk/2,46,.5);
+        menGroup.add(men);
+
+        scene.add(cabGroup,menGroup);
+
+    }
+    var cab1= new Cabient(50,50,'1A01');
+
+    // 可以继续添加机柜
+    // var cab2 = new Cabient(-100,100,'1A02');
+    // var cab3 = new Cabient(-100,-100,'1B01');
+
+
+
+    //构造服务器。参数：所属机柜（如cab1）,高度坐标
+    function Server(obj,h){
+        this.x = obj.x;
+        this.z = obj.z;
+        this.y = 0;
+        this.h = h;
+
+        var serv2Group = new THREE.Group();
+        serv2Group.position.set(this.x ,this.y,this.z);
+
+        //两层的服务器
+        var servTexture = THREE.ImageUtils.loadTexture('img/rack_inside.jpg', {}, render);
+        var serv2Geo = new THREE.BoxGeometry(24,3.5,36);//这里服务器的尺寸要跟机箱尺寸对应好
+        var servMat = new THREE.MeshBasicMaterial({
+            color:0x9AC0CD,
+            map:servTexture
+        });
+        var server2 = new THREE.Mesh(serv2Geo,servMat);//服务器主体
+        server2.position.set(0,this.h,2);
+
+        var server2mGeo = new THREE.BoxGeometry(26.4,4,0.2);//服务器面板尺寸
+        var smb2Materials = [];
+        smb2Materials.push(
+            new THREE.MeshBasicMaterial({color:0xffffff}),
+            new THREE.MeshBasicMaterial({color:0xffffff}),
+            new THREE.MeshBasicMaterial({color:0xffffff}),
+            new THREE.MeshBasicMaterial({color:0xffffff}),
+            new THREE.MeshBasicMaterial({
+                map:THREE.ImageUtils.loadTexture(
+                    'img/server2.jpg',
+                    {},
+                    render
+                ),
+                overdraw:true
+            }),
+            new THREE.MeshBasicMaterial({color:0xffffff})
+        );
+        var server2mMat = new THREE.MeshFaceMaterial(smb2Materials);//服务器面板材质
+        var server2face = new THREE.Mesh(server2mGeo,server2mMat );
+        server2face.name= 'ctr2';
+        server2face.position.set(0,this.h,36/2+0.2/2+2);
+        serv2Group.add(server2,server2face);
+
+
+        scene.add(serv2Group);
+
+
+    }
+
+    // 往机柜里加个服务器
+    var server1 = new Server(cab1,50);//  突然发现高度好像没对应好，懒，不想算了
+
+    // 往机柜里加个构造交换机
+    function Switchboard(obj,h){
+        this.x = obj.x;
+        this.z = obj.z;
+        this.h = h;
+
+        var switchGroup = new THREE.Group();
+        switchGroup.position.set(this.x ,0,this.z);
+        var switchTexture = THREE.ImageUtils.loadTexture('img/rack_inside.jpg', {}, render);
+        var switchGeo = new THREE.BoxGeometry(24,11.5,36);//交换机主体尺寸，宽厚长，要跟机箱对应
+        var switchMat = new THREE.MeshBasicMaterial({
+            color:0x9AC0CD,
+            map:switchTexture
+        });
+        var switchBody = new THREE.Mesh(switchGeo,switchMat);
+        switchBody.position.set(0,this.h,2);
+
+        var switchmGeo = new THREE.BoxGeometry(26.4,12,0.2);//交换机面板尺寸
+        var switchmMat = new THREE.MeshBasicMaterial({//交换机面板材质
+            color:0xffffff
+        });
+        var switchfMaterials = [];
+        switchfMaterials.push(
+            switchmMat,
+            switchmMat,
+            switchmMat,
+            switchmMat,
+            new THREE.MeshBasicMaterial({
+                map:THREE.ImageUtils.loadTexture(
+                    'img/switchboard.jpg',
+                    {},
+                    render
+                ),
+                overdraw:true
+            }),
+            switchmMat
+
+        );
+        var switchfMat = new THREE.MeshFaceMaterial(switchfMaterials);//交换机面板材质
+        var switchface = new THREE.Mesh(switchmGeo,switchfMat);
+        switchface.position.set(0,this.h,36/2+0.2/2+2);
+
+
+        switchGroup.add(switchBody,switchface);
+        scene.add(switchGroup);
+    }
+    var switchboard11 = new Switchboard(cab1,30);
+
+
+    document.addEventListener('dblclick', onDocumentMouseDown, false);
+    function onDocumentMouseDown(event) {
+        event.preventDefault();
+        //1、先基于我们在屏幕上点击的位置创建一个向量
+        var vector = new THREE.Vector3(
+            (event.clientX / window.innerWidth ) * 2 - 1,
+            -( event.clientY / window.innerHeight ) * 2 + 1,
+            0.5
+        );
+        //2、然后用unproject函数将点击位置转换成Thres.js场景中的坐标
+        vector = vector.unproject(camera);
+        //3、用THREE.Raycaster对象向点击位置发射光线
+        var raycaster = new THREE.Raycaster(camera.position, vector.sub(camera.position).normalize());
+        //4、计算射线相机到的对象，可能有多个对象，因此返回的是一个数组，按离相机远近排列
+        //将射线投影到屏幕，如果scene.children里的某个或多个形状相交，则返回这些形状
+        //第二个参数是设置是否递归，默认是false，也就是不递归。当scene里面添加了Group对象的实例时，就需要设置这个参数为true
+        //第一个参数不传scene.children也可以，传一个group.children或一个形状数组都可以（这样可以实现一些特别的效果如点击内部的效果）
+        //另外，因为返回的是一个数组，所以遍历数组就可以获得所有相交的对象，当元素重叠时，特别有用
+        var intersects = raycaster.intersectObjects(scene.children,true);
+        var currObj = intersects[0].object;//currObj为点击到的第一个对象
+
+
+        //如果这个对象是门
+        //如果门是关闭的
+        //那么打开，并且移动摄像机位置
+        //如果门是打开的
+        //那么关闭
+        if(currObj.name=='men'){
+//            console.log(currObj.parent.name);//currObj.parent是menGroup
+            var p1=new THREE.Vector3(currObj.parent.position);//
+            var number = currObj.parent.name;
+
+            if(currObj.parent.rotation.y == 0){
+                new TWEEN.Tween( currObj.parent.rotation ).to({
+                    y: .6*Math.PI
+                }, 1500 ).easing( TWEEN.Easing.Elastic.Out).start();
+//                console.log(currObj.parent.position);
+
+
+                controls.target=new THREE.Vector3(
+                    currObj.parent.position.x,
+                    currObj.parent.position.y+50,
+                    currObj.parent.position.z
+                );
+
+
+                //移动相机的位置(有动画)，但是有个问题还不知怎么解决
+                // new TWEEN.Tween( camera.position ).to({
+                //     x:currObj.parent.position.x-15,
+                //     y:currObj.parent.position.y+100,
+                //     z:currObj.parent.position.z+130
+                // }, 500 ).start();
+
+                camera.position.set(
+                    currObj.parent.position.x+15,
+                    currObj.parent.position.y+100,
+                    currObj.parent.position.z+130
+                );
+
+            }else{
+                new TWEEN.Tween( currObj.parent.rotation ).to({
+                    y: 0
+                }, 300 ).start();
+            }
+
+            controls.update();
+
+        }
+
+        if(currObj.name=='ctr2'){
+           console.log(currObj.parent.position.z);
+            var p1=new THREE.Vector3(currObj.parent.position);//
+
+            if(currObj.parent.position.z == 50){
+                new TWEEN.Tween( currObj.parent.position ).to({
+                    z:currObj.parent.position.z+20
+                }, 500 ).easing( TWEEN.Easing.Elastic.Out).start();
+//                console.log(currObj.parent.position);
+
+            }else{
+                new TWEEN.Tween( currObj.parent.position ).to({
+                    z:currObj.parent.position.z-20
+                }, 500 ).easing( TWEEN.Easing.Elastic.Out).start();
+            }
+
+            controls.update();
+
+        }
+
+        render();
+    }
+
+
+    //视角控制器
+    var controls;
+    function ctr(){
+        controls = new THREE.OrbitControls(camera);
+        controls.addEventListener('change',render);
+        //相机到原点的最远距离
+        controls.maxDistance = 2000;
+    }
+    ctr();
+
+    function render(){
+        TWEEN.update();
+        renderer.render(scene,camera);
+    }
+    render();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        render();
+    }
+    animate();
+
+
+    function onResize() {
+        // aspect表示屏幕长宽比
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    // 浏览器变化时画布自适应
+    window.addEventListener('resize', onResize, false);
+</script>
+
+</body>
+</html>
