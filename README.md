@@ -1,2 +1,2 @@
 # Cabinet_three.js
-hehe  I have nothing ti say
+hehe  I have nothing to say
